@@ -4,7 +4,7 @@
   <title><![CDATA[Indefinable Hacking]]></title>
   <link href="http://henrysher.github.io/atom.xml" rel="self"/>
   <link href="http://henrysher.github.io/"/>
-  <updated>2013-09-10T16:56:52+08:00</updated>
+  <updated>2013-09-10T18:14:14+08:00</updated>
   <id>http://henrysher.github.io/</id>
   <author>
     <name><![CDATA[Henry Huang]]></name>
@@ -18,7 +18,8 @@
     <link href="http://henrysher.github.io/blog/2013/09/10/hello-world/"/>
     <updated>2013-09-10T15:59:00+08:00</updated>
     <id>http://henrysher.github.io/blog/2013/09/10/hello-world</id>
-    <content type="html"><![CDATA[<p>This is my first post on this blog. Thus I call it as the &ldquo;Hello World&rdquo; for my blog.</p>
+    <content type="html"><![CDATA[<p>This is my first post on this blog. Thus I call it as the &ldquo;Hello World&rdquo; for my blog.
+<img src="../_images/hello_world.jpg" title="Hello World" alt="Alt text" /></p>
 ]]></content>
   </entry>
   
