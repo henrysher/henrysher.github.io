@@ -1,0 +1,4 @@
+User-agent: *
+Disallow: 
+
+Sitemap: http://henrysher.github.io/sitemap.xml 
