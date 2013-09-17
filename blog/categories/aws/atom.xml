@@ -1,0 +1,401 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+  <title><![CDATA[Category: AWS | Indefinable Hacking]]></title>
+  <link href="http://henrysher.github.io/blog/categories/aws/atom.xml" rel="self"/>
+  <link href="http://henrysher.github.io/"/>
+  <updated>2013-09-18T00:01:09+08:00</updated>
+  <id>http://henrysher.github.io/</id>
+  <author>
+    <name><![CDATA[Henry Huang]]></name>
+    
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
+
+  
+  <entry>
+    <title type="html"><![CDATA[Launch Your Own NAT Instance in VPC]]></title>
+    <link href="http://henrysher.github.io/blog/2013/09/17/launch-your-own-nat-instance-under-vpc/"/>
+    <updated>2013-09-17T21:31:00+08:00</updated>
+    <id>http://henrysher.github.io/blog/2013/09/17/launch-your-own-nat-instance-under-vpc</id>
+    <content type="html"><![CDATA[<p>It is a long time for me to suffer on the default NAT instance provided by AWS.
+Maybe you also have the similar feelings here. Really not? Google it, especially questions in AWS Forum. :p</p>
+
+<p>So I&rsquo;d like to introduce my solution on how to launch your own NAT instance in VPC.
+Then you could customize it as you wish.
+Yes! It feels so good especially when everything is just in your hand, right?</p>
+
+<h2>What&rsquo;s About NAT Instance</h2>
+
+<p>Description in AWS official document:</p>
+
+<blockquote><p>Instances that you launch into a private subnet in a virtual private cloud (VPC) can&rsquo;t communicate with the Internet.
+You can optionally use a network address translation (NAT) instance in a public subnet in your VPC to enable instances in the private subnet to initiate outbound traffic to the Internet,
+but prevent the instances from receiving inbound traffic initiated by someone on the Internet.</p></blockquote>
+
+<p>According to the information above,
+its core funtions could be summarized as belows:</p>
+
+<pre><code>  *  This instance located in a public subnet
+  *  It could access Internet after EIP address assigned
+  *  NAT enabled: acutally PAT (Port Adress Translation)
+</code></pre>
+
+<p>This workflow below could let you know more easily.
+<img src="https://s3.amazonaws.com/awsmedia/articles/squid_proxy_farm_files/nat_overview.jpg" title="NAT Overview" alt="alt text" /></p>
+
+<h2>Environment Preparation</h2>
+
+<pre><code>  * Setup a proper VPC with a publib subnet and a private subnet
+  * Create the Security Group for NAT instance
+  * Create the Security Group for test instance in the private subnet
+  * Create a new Elastic IP Address
+  * Create the ENI (Elastic Network Address Interface) for NAT instance
+  * Associate the EIP and NAT Security Group to this ENI
+  * Disable Source/Destination Check in this ENI
+  * Add this ENI as a target to main route table with the destination (0.0.0.0/0)
+  * Prepare a base AMI with cloud-init tool installed (v0.6.3 in EPEL)
+  * Create a new IAM Role: simply with Power User + IAM Ready Only permissions
+  * Generate a key pair for SSH logon
+</code></pre>
+
+<h3>For example:</h3>
+
+<table>
+<thead>
+<tr>
+<th></th>
+<th> Environment Parameters   </th>
+<th> Values                </th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td> Public Subnet            </td>
+<td> subnet-05c2e36d       </td>
+</tr>
+<tr>
+<td></td>
+<td> Private Subnet           </td>
+<td> subnet-16cdec7e       </td>
+</tr>
+<tr>
+<td></td>
+<td> NAT Security Group       </td>
+<td> sgVpcNat: sg-12345678 </td>
+</tr>
+<tr>
+<td></td>
+<td> Test Security Group      </td>
+<td> sgTest:   sg-87654321 </td>
+</tr>
+<tr>
+<td></td>
+<td> NAT Instance EIP         </td>
+<td> 1.1.1.1               </td>
+</tr>
+<tr>
+<td></td>
+<td> ENI for NAT Instance     </td>
+<td> eni-4c47c227          </td>
+</tr>
+<tr>
+<td></td>
+<td> AMI for NAT Instance     </td>
+<td> ami-12345678          </td>
+</tr>
+<tr>
+<td></td>
+<td> IAM Role                 </td>
+<td> nat-test             </td>
+</tr>
+<tr>
+<td></td>
+<td> Key Pair                 </td>
+<td> nat4test</td>
+</tr>
+</tbody>
+</table>
+
+
+<BR>
+
+
+<h4>For NAT Security Group &ldquo;sgVpcNat&rdquo; :</h4>
+
+<table>
+<thead>
+<tr>
+<th></th>
+<th> Direction </th>
+<th> Port or Service </th>
+<th> Source    </th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td> Inbound   </td>
+<td> All             </td>
+<td> sgTest    </td>
+</tr>
+<tr>
+<td></td>
+<td> Inbound   </td>
+<td> TCP:22          </td>
+<td> 0.0.0.0/0 </td>
+</tr>
+<tr>
+<td></td>
+<td> Inbound   </td>
+<td> ICMP            </td>
+<td> 0.0.0.0/0 </td>
+</tr>
+<tr>
+<td></td>
+<td> Outbound  </td>
+<td> All             </td>
+<td> 0.0.0.0/0 </td>
+</tr>
+</tbody>
+</table>
+
+
+<BR>
+
+
+<h4>For Test Security Group &ldquo;sgTest&rdquo; :</h4>
+
+<table>
+<thead>
+<tr>
+<th></th>
+<th> Direction </th>
+<th> Port or Service </th>
+<th> Source    </th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td> Inbound   </td>
+<td> TCP/22          </td>
+<td> 0.0.0.0/0 </td>
+</tr>
+<tr>
+<td></td>
+<td> Outbound  </td>
+<td> All             </td>
+<td> 0.0.0.0/0 </td>
+</tr>
+</tbody>
+</table>
+
+
+<h2>Do it now</h2>
+
+<h3>First: Generate UserData for NAT Instance</h3>
+
+<p>Save as <strong>/tmp/userdata.txt</strong></p>
+
+<p>```</p>
+
+<h1>!/bin/bash</h1>
+
+<h1>Configure the instance to run as a Port Address Translator (PAT) to provide</h1>
+
+<h1>Internet connectivity to private instances.</h1>
+
+<h1></h1>
+
+<p>set -x
+echo &ldquo;Determining the MAC address on eth0&rdquo;
+ETH0_MAC=<code>/sbin/ifconfig  | /bin/grep eth0 | awk '{print tolower($5)}' | grep '^[0-9a-f]\{2\}\(:[0-9a-f]\{2\}\)\{5\}$'</code>
+if [ $? -ne 0 ] ; then
+   echo &ldquo;Unable to determine MAC address on eth0&rdquo; | logger -t &ldquo;ec2&rdquo;
+   exit 1
+fi
+echo &ldquo;Found MAC: ${ETH0_MAC} on eth0&rdquo; | logger -t &ldquo;ec2&rdquo;</p>
+
+<p>VPC_CIDR_URI=&ldquo;<a href="http://169.254.169.254/latest/meta-data/network/interfaces/macs/$">http://169.254.169.254/latest/meta-data/network/interfaces/macs/$</a>{ETH0_MAC}/vpc-ipv4-cidr-block&rdquo;
+echo &ldquo;Metadata location for vpc ipv4 range: ${VPC_CIDR_URI}&rdquo; | logger -t &ldquo;ec2&rdquo;</p>
+
+<p>VPC_CIDR_RANGE=<code>curl --retry 3 --retry-delay 0 --silent --fail ${VPC_CIDR_URI}</code>
+if [ $? -ne 0 ] ; then
+   echo &ldquo;Unable to retrive VPC CIDR range from meta-data. Using 0.0.0.0/0 instead. PAT may not function correctly&rdquo; | logger -t &ldquo;ec2&rdquo;
+   VPC_CIDR_RANGE=&ldquo;0.0.0.0/0&rdquo;
+else
+   echo &ldquo;Retrived the VPC CIDR range: ${VPC_CIDR_RANGE} from meta-data&rdquo; |logger -t &ldquo;ec2&rdquo;
+fi</p>
+
+<p>echo 1 >  /proc/sys/net/ipv4/ip_forward &amp;&amp; \
+   echo 0 >  /proc/sys/net/ipv4/conf/eth0/send_redirects &amp;&amp; \
+   /sbin/iptables -t nat -A POSTROUTING -o eth0 -s ${VPC_CIDR_RANGE} -j MASQUERADE</p>
+
+<p>if [ $? -ne 0 ] ; then
+   echo &ldquo;Configuration of PAT failed&rdquo; | logger -t &ldquo;ec2&rdquo;
+   exit 0
+fi</p>
+
+<p>echo &ldquo;Configuration of PAT complete&rdquo; |logger -t &ldquo;ec2&rdquo;
+exit 0
+```</p>
+
+<h3>Second: Launch NAT Instance</h3>
+
+<p>I have used spot instance to launch (more cheaper).
+```</p>
+
+<h1>!/bin/bash</h1>
+
+<h2>This script tries to solve the problem on how to launch customized NAT instance</h2>
+
+<h1>Install AWS-CLI Tool</h1>
+
+<p>/usr/bin/yum install -y gcc python-pip python-devel
+/usr/bin/pip-python install awscli</p>
+
+<h1>Generate the configuration of NAT instance to launch</h1>
+
+<p>/bin/rm -fv /tmp/launch_config.json
+/bin/cat &lt;&lt; EOF >> /tmp/launch_config.json
+{
+  &ldquo;ImageId&rdquo;: &ldquo;ami-12345678&rdquo;,
+  &ldquo;KeyName&rdquo;: &ldquo;nat4test&rdquo;,
+  &ldquo;UserData&rdquo;: &ldquo;&rdquo;,
+  &ldquo;InstanceType&rdquo;: &ldquo;m1.small&rdquo;,
+  &ldquo;IamInstanceProfile&rdquo;: {</p>
+
+<pre><code>"Name": "nat-test"
+</code></pre>
+
+<p>  },
+  &ldquo;NetworkInterfaces&rdquo;: [</p>
+
+<pre><code>{
+  "NetworkInterfaceId": "eni-4c47c227",
+  "DeviceIndex": 0,
+  "DeleteOnTermination": false
+}
+</code></pre>
+
+<p>  ]
+}
+EOF</p>
+
+<h1>Use base64 to encode generated userdata in launch_config.json</h1>
+
+<p>/usr/bin/wget <a href="https://gist.github.com/henrysher/6589465/raw/90697c8e2485f28a141f1b5bad0d2c0bb2e2a2e9/userdata_base64.py">https://gist.github.com/henrysher/6589465/raw/90697c8e2485f28a141f1b5bad0d2c0bb2e2a2e9/userdata_base64.py</a> -O /usr/bin/userdata_base64.py
+/bin/chmod +x /usr/bin/userdata_base64.py
+/usr/bin/userdata_base64.py /tmp/userdata.txt /tmp/launch_config.json</p>
+
+<h1>Launch NAT instance via spot request</h1>
+
+<p>/usr/bin/aws ec2 request-spot-instances &mdash;spot-price 0.01 &mdash;region us-west-2  &mdash;launch-specification  file:///tmp/launch_config.json  > /tmp/spot_request.json</p>
+
+<h1>Install JSON parser tool: jq</h1>
+
+<p>/usr/bin/wget <a href="http://stedolan.github.io/jq/download/linux64/jq">http://stedolan.github.io/jq/download/linux64/jq</a> -O /usr/bin/jq
+/bin/chmod +x /usr/bin/jq</p>
+
+<h1>Get spot-instance-request-id and Query the status of spot instance launching</h1>
+
+<p>SPOT_ID=<code>jq '.SpotInstanceRequests[0] | .SpotInstanceRequestId' /tmp/spot_request.json --raw-output</code>
+/usr/bin/aws ec2 describe-spot-instance-requests &mdash;spot-instance-request-ids ${SPOT_ID}  &mdash;region us-west-2 > /tmp/spot_instance.json
+INSTANCE_ID=<code>jq '.SpotInstanceRequests[0] | .InstanceId' /tmp/spot_instance.json --raw-output</code></p>
+
+<h1>Wait for the instance ready</h1>
+
+<p>while [ ${INSTANCE_ID} == &ldquo;null&rdquo; ]
+do
+  /usr/bin/aws ec2 describe-spot-instance-requests &mdash;spot-instance-request-ids ${SPOT_ID}  &mdash;region us-west-2 > /tmp/spot_instance.json
+  INSTANCE_ID=<code>jq '.SpotInstanceRequests[0] | .InstanceId' /tmp/spot_instance.json --raw-output</code>
+  /bin/sleep 15
+  echo &ldquo;INSTANCE_ID still: ${INSTANCE_ID}&rdquo;
+done</p>
+
+<h1>Add Tags for this instance</h1>
+
+<p>/usr/bin/aws ec2 create-tags &mdash;resources ${INSTANCE_ID} &mdash;tags Key=Name,Value=VpcNAT Key=Owner,Value=HenryHuang &mdash;region us-west-2
+```</p>
+
+<h3>Third: Launch Test Instance in the private subnet</h3>
+
+<p>```</p>
+
+<h1>!/bin/bash</h1>
+
+<h1>This script is used to launch test instance in the private subnet</h1>
+
+<h1>Install AWS-CLI tool</h1>
+
+<p>/usr/bin/yum install -y gcc python-pip python-devel
+/usr/bin/pip-python install awscli</p>
+
+<h1>Generate the configuration of test instance to launch</h1>
+
+<p>/bin/rm -fv /tmp/test.json
+/bin/cat &lt;&lt; EOF >> /tmp/test.json
+{
+  &ldquo;ImageId&rdquo;: &ldquo;ami-12345678&rdquo;,
+  &ldquo;KeyName&rdquo;: &ldquo;nat4test&rdquo;,
+  &ldquo;UserData&rdquo;: &ldquo;&rdquo;,
+  &ldquo;InstanceType&rdquo;: &ldquo;m1.small&rdquo;,
+  &ldquo;SubnetId&rdquo;: &ldquo;subnet-16cdec7e&rdquo;,
+  &ldquo;SecurityGroupIds&rdquo;: [&ldquo;sg-87654321&rdquo;],
+  &ldquo;IamInstanceProfile&rdquo;: {</p>
+
+<pre><code>"Name": "nat-test"
+</code></pre>
+
+<p>  }
+}
+EOF</p>
+
+<h1>Launch test instance via spot request</h1>
+
+<p>/usr/bin/aws ec2 request-spot-instances &mdash;spot-price 0.01 &mdash;region us-west-2  &mdash;launch-specification  file:///tmp/test.json > /tmp/spot_request.json</p>
+
+<h1>Install JSON parser tool: jq</h1>
+
+<p>/usr/bin/wget <a href="http://stedolan.github.io/jq/download/linux64/jq">http://stedolan.github.io/jq/download/linux64/jq</a> -O /usr/bin/jq
+/bin/chmod +x /usr/bin/jq</p>
+
+<h1>Get spot-instance-request-id and Query the status of spot instance launching</h1>
+
+<p>SPOT_ID=<code>jq '.SpotInstanceRequests[0] | .SpotInstanceRequestId' /tmp/spot_request.json --raw-output</code>
+/usr/bin/aws ec2 describe-spot-instance-requests &mdash;spot-instance-request-ids ${SPOT_ID} &mdash;region us-west-2  > /tmp/spot_instance.json
+INSTANCE_ID=<code>jq '.SpotInstanceRequests[0] | .InstanceId' /tmp/spot_instance.json --raw-output</code></p>
+
+<h1>Wait for the instance ready</h1>
+
+<p>while [ ${INSTANCE_ID} == &ldquo;null&rdquo; ]
+do
+  /usr/bin/aws ec2 describe-spot-instance-requests &mdash;spot-instance-request-ids ${SPOT_ID}  &mdash;region us-west-2  > /tmp/spot_instance.json
+  INSTANCE_ID=<code>jq '.SpotInstanceRequests[0] | .InstanceId' /tmp/spot_instance.json --raw-output</code>
+  /bin/sleep 15
+  echo &ldquo;INSTANCE_ID still: ${INSTANCE_ID}&rdquo;
+done</p>
+
+<h1>Add Tags for this instance</h1>
+
+<p>/usr/bin/aws ec2 create-tags &mdash;resources ${INSTANCE_ID} &mdash;tags Key=Name,Value=VpcTest Key=Owner,Value=HenryHuang &mdash;region us-west-2
+```</p>
+
+<h3>Finally Do the Verification</h3>
+
+<pre><code> 1. SCP private SSH key to the NAT instance
+ 2. SSH logon to the NAT instance
+ 3. Check the info "Configuration of PAT complete" in /var/log/messages
+ 4. Use this key to logon to the test instance
+ 5. Verify "ping" and "wget" on "google.com"
+</code></pre>
+
+<h2>References</h2>
+
+<p><a href="http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/VPC_NAT_Instance.html">http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/VPC_NAT_Instance.html</a></p>
+]]></content>
+  </entry>
+  
+</feed>

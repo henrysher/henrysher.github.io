@@ -4,7 +4,7 @@
   <title><![CDATA[Indefinable Hacking]]></title>
   <link href="http://henrysher.github.io/atom.xml" rel="self"/>
   <link href="http://henrysher.github.io/"/>
-  <updated>2013-09-11T13:26:37+08:00</updated>
+  <updated>2013-09-18T00:01:09+08:00</updated>
   <id>http://henrysher.github.io/</id>
   <author>
     <name><![CDATA[Henry Huang]]></name>
@@ -12,6 +12,499 @@
   </author>
   <generator uri="http://octopress.org/">Octopress</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[Launch Your Own NAT Instance in VPC]]></title>
+    <link href="http://henrysher.github.io/blog/2013/09/17/launch-your-own-nat-instance-under-vpc/"/>
+    <updated>2013-09-17T21:31:00+08:00</updated>
+    <id>http://henrysher.github.io/blog/2013/09/17/launch-your-own-nat-instance-under-vpc</id>
+    <content type="html"><![CDATA[<p>It is a long time for me to suffer on the default NAT instance provided by AWS.
+Maybe you also have the similar feelings here. Really not? Google it, especially questions in AWS Forum. :p</p>
+
+<p>So I&rsquo;d like to introduce my solution on how to launch your own NAT instance in VPC.
+Then you could customize it as you wish.
+Yes! It feels so good especially when everything is just in your hand, right?</p>
+
+<h2>What&rsquo;s About NAT Instance</h2>
+
+<p>Description in AWS official document:</p>
+
+<blockquote><p>Instances that you launch into a private subnet in a virtual private cloud (VPC) can&rsquo;t communicate with the Internet.
+You can optionally use a network address translation (NAT) instance in a public subnet in your VPC to enable instances in the private subnet to initiate outbound traffic to the Internet,
+but prevent the instances from receiving inbound traffic initiated by someone on the Internet.</p></blockquote>
+
+<p>According to the information above,
+its core funtions could be summarized as belows:</p>
+
+<pre><code>  *  This instance located in a public subnet
+  *  It could access Internet after EIP address assigned
+  *  NAT enabled: acutally PAT (Port Adress Translation)
+</code></pre>
+
+<p>This workflow below could let you know more easily.
+<img src="https://s3.amazonaws.com/awsmedia/articles/squid_proxy_farm_files/nat_overview.jpg" title="NAT Overview" alt="alt text" /></p>
+
+<h2>Environment Preparation</h2>
+
+<pre><code>  * Setup a proper VPC with a publib subnet and a private subnet
+  * Create the Security Group for NAT instance
+  * Create the Security Group for test instance in the private subnet
+  * Create a new Elastic IP Address
+  * Create the ENI (Elastic Network Address Interface) for NAT instance
+  * Associate the EIP and NAT Security Group to this ENI
+  * Disable Source/Destination Check in this ENI
+  * Add this ENI as a target to main route table with the destination (0.0.0.0/0)
+  * Prepare a base AMI with cloud-init tool installed (v0.6.3 in EPEL)
+  * Create a new IAM Role: simply with Power User + IAM Ready Only permissions
+  * Generate a key pair for SSH logon
+</code></pre>
+
+<h3>For example:</h3>
+
+<table>
+<thead>
+<tr>
+<th></th>
+<th> Environment Parameters   </th>
+<th> Values                </th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td> Public Subnet            </td>
+<td> subnet-05c2e36d       </td>
+</tr>
+<tr>
+<td></td>
+<td> Private Subnet           </td>
+<td> subnet-16cdec7e       </td>
+</tr>
+<tr>
+<td></td>
+<td> NAT Security Group       </td>
+<td> sgVpcNat: sg-12345678 </td>
+</tr>
+<tr>
+<td></td>
+<td> Test Security Group      </td>
+<td> sgTest:   sg-87654321 </td>
+</tr>
+<tr>
+<td></td>
+<td> NAT Instance EIP         </td>
+<td> 1.1.1.1               </td>
+</tr>
+<tr>
+<td></td>
+<td> ENI for NAT Instance     </td>
+<td> eni-4c47c227          </td>
+</tr>
+<tr>
+<td></td>
+<td> AMI for NAT Instance     </td>
+<td> ami-12345678          </td>
+</tr>
+<tr>
+<td></td>
+<td> IAM Role                 </td>
+<td> nat-test             </td>
+</tr>
+<tr>
+<td></td>
+<td> Key Pair                 </td>
+<td> nat4test</td>
+</tr>
+</tbody>
+</table>
+
+
+<BR>
+
+
+<h4>For NAT Security Group &ldquo;sgVpcNat&rdquo; :</h4>
+
+<table>
+<thead>
+<tr>
+<th></th>
+<th> Direction </th>
+<th> Port or Service </th>
+<th> Source    </th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td> Inbound   </td>
+<td> All             </td>
+<td> sgTest    </td>
+</tr>
+<tr>
+<td></td>
+<td> Inbound   </td>
+<td> TCP:22          </td>
+<td> 0.0.0.0/0 </td>
+</tr>
+<tr>
+<td></td>
+<td> Inbound   </td>
+<td> ICMP            </td>
+<td> 0.0.0.0/0 </td>
+</tr>
+<tr>
+<td></td>
+<td> Outbound  </td>
+<td> All             </td>
+<td> 0.0.0.0/0 </td>
+</tr>
+</tbody>
+</table>
+
+
+<BR>
+
+
+<h4>For Test Security Group &ldquo;sgTest&rdquo; :</h4>
+
+<table>
+<thead>
+<tr>
+<th></th>
+<th> Direction </th>
+<th> Port or Service </th>
+<th> Source    </th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td> Inbound   </td>
+<td> TCP/22          </td>
+<td> 0.0.0.0/0 </td>
+</tr>
+<tr>
+<td></td>
+<td> Outbound  </td>
+<td> All             </td>
+<td> 0.0.0.0/0 </td>
+</tr>
+</tbody>
+</table>
+
+
+<h2>Do it now</h2>
+
+<h3>First: Generate UserData for NAT Instance</h3>
+
+<p>Save as <strong>/tmp/userdata.txt</strong></p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>#!/bin/bash
+</span><span class='line'>
+</span><span class='line'># Configure the instance to run as a Port Address Translator (PAT) to provide 
+</span><span class='line'># Internet connectivity to private instances. 
+</span><span class='line'># 
+</span><span class='line'>
+</span><span class='line'>set -x
+</span><span class='line'>echo "Determining the MAC address on eth0"
+</span><span class='line'>ETH0_MAC=`/sbin/ifconfig  | /bin/grep eth0 | awk '{print tolower($5)}' | grep '^[0-9a-f]\{2\}\(:[0-9a-f]\{2\}\)\{5\}$'`
+</span><span class='line'>if [ $? -ne 0 ] ; then
+</span><span class='line'>   echo "Unable to determine MAC address on eth0" | logger -t "ec2"
+</span><span class='line'>   exit 1
+</span><span class='line'>fi
+</span><span class='line'>echo "Found MAC: ${ETH0_MAC} on eth0" | logger -t "ec2"
+</span><span class='line'>
+</span><span class='line'>
+</span><span class='line'>VPC_CIDR_URI="http://169.254.169.254/latest/meta-data/network/interfaces/macs/${ETH0_MAC}/vpc-ipv4-cidr-block"
+</span><span class='line'>echo "Metadata location for vpc ipv4 range: ${VPC_CIDR_URI}" | logger -t "ec2"
+</span><span class='line'>
+</span><span class='line'>VPC_CIDR_RANGE=`curl --retry 3 --retry-delay 0 --silent --fail ${VPC_CIDR_URI}`
+</span><span class='line'>if [ $? -ne 0 ] ; then
+</span><span class='line'>   echo "Unable to retrive VPC CIDR range from meta-data. Using 0.0.0.0/0 instead. PAT may not function correctly" | logger -t "ec2"
+</span><span class='line'>   VPC_CIDR_RANGE="0.0.0.0/0"
+</span><span class='line'>else
+</span><span class='line'>   echo "Retrived the VPC CIDR range: ${VPC_CIDR_RANGE} from meta-data" |logger -t "ec2"
+</span><span class='line'>fi
+</span><span class='line'>
+</span><span class='line'>echo 1 &gt;  /proc/sys/net/ipv4/ip_forward && \
+</span><span class='line'>   echo 0 &gt;  /proc/sys/net/ipv4/conf/eth0/send_redirects && \
+</span><span class='line'>   /sbin/iptables -t nat -A POSTROUTING -o eth0 -s ${VPC_CIDR_RANGE} -j MASQUERADE
+</span><span class='line'>
+</span><span class='line'>if [ $? -ne 0 ] ; then
+</span><span class='line'>   echo "Configuration of PAT failed" | logger -t "ec2"
+</span><span class='line'>   exit 0
+</span><span class='line'>fi
+</span><span class='line'>
+</span><span class='line'>echo "Configuration of PAT complete" |logger -t "ec2"
+</span><span class='line'>exit 0</span></code></pre></td></tr></table></div></figure>
+
+
+<h3>Second: Launch NAT Instance</h3>
+
+<p>I have used spot instance to launch (more cheaper).</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+<span class='line-number'>47</span>
+<span class='line-number'>48</span>
+<span class='line-number'>49</span>
+<span class='line-number'>50</span>
+<span class='line-number'>51</span>
+<span class='line-number'>52</span>
+<span class='line-number'>53</span>
+<span class='line-number'>54</span>
+<span class='line-number'>55</span>
+<span class='line-number'>56</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>#!/bin/bash
+</span><span class='line'>## This script tries to solve the problem on how to launch customized NAT instance 
+</span><span class='line'>
+</span><span class='line'># Install AWS-CLI Tool
+</span><span class='line'>/usr/bin/yum install -y gcc python-pip python-devel
+</span><span class='line'>/usr/bin/pip-python install awscli
+</span><span class='line'>
+</span><span class='line'># Generate the configuration of NAT instance to launch
+</span><span class='line'>/bin/rm -fv /tmp/launch_config.json
+</span><span class='line'>/bin/cat &lt;&lt; EOF &gt;&gt; /tmp/launch_config.json
+</span><span class='line'>{
+</span><span class='line'>  "ImageId": "ami-12345678",
+</span><span class='line'>  "KeyName": "nat4test",
+</span><span class='line'>  "UserData": "",
+</span><span class='line'>  "InstanceType": "m1.small",
+</span><span class='line'>  "IamInstanceProfile": {
+</span><span class='line'>    "Name": "nat-test"
+</span><span class='line'>  },
+</span><span class='line'>  "NetworkInterfaces": [
+</span><span class='line'>    {
+</span><span class='line'>      "NetworkInterfaceId": "eni-4c47c227",
+</span><span class='line'>      "DeviceIndex": 0,
+</span><span class='line'>      "DeleteOnTermination": false
+</span><span class='line'>    }
+</span><span class='line'>  ]
+</span><span class='line'>}
+</span><span class='line'>EOF
+</span><span class='line'>
+</span><span class='line'># Use base64 to encode generated userdata in launch_config.json
+</span><span class='line'>/usr/bin/wget https://gist.github.com/henrysher/6589465/raw/90697c8e2485f28a141f1b5bad0d2c0bb2e2a2e9/userdata_base64.py -O /usr/bin/userdata_base64.py
+</span><span class='line'>/bin/chmod +x /usr/bin/userdata_base64.py
+</span><span class='line'>/usr/bin/userdata_base64.py /tmp/userdata.txt /tmp/launch_config.json
+</span><span class='line'>
+</span><span class='line'># Launch NAT instance via spot request 
+</span><span class='line'>/usr/bin/aws ec2 request-spot-instances --spot-price 0.01 --region us-west-2  --launch-specification  file:///tmp/launch_config.json  &gt; /tmp/spot_request.json
+</span><span class='line'>
+</span><span class='line'># Install JSON parser tool: jq
+</span><span class='line'>/usr/bin/wget http://stedolan.github.io/jq/download/linux64/jq -O /usr/bin/jq
+</span><span class='line'>/bin/chmod +x /usr/bin/jq
+</span><span class='line'>
+</span><span class='line'># Get spot-instance-request-id and Query the status of spot instance launching
+</span><span class='line'>SPOT_ID=`jq '.SpotInstanceRequests[0] | .SpotInstanceRequestId' /tmp/spot_request.json --raw-output`
+</span><span class='line'>/usr/bin/aws ec2 describe-spot-instance-requests --spot-instance-request-ids ${SPOT_ID}  --region us-west-2 &gt; /tmp/spot_instance.json
+</span><span class='line'>INSTANCE_ID=`jq '.SpotInstanceRequests[0] | .InstanceId' /tmp/spot_instance.json --raw-output`
+</span><span class='line'>
+</span><span class='line'># Wait for the instance ready 
+</span><span class='line'>while [ ${INSTANCE_ID} == "null" ]
+</span><span class='line'>do 
+</span><span class='line'>  /usr/bin/aws ec2 describe-spot-instance-requests --spot-instance-request-ids ${SPOT_ID}  --region us-west-2 &gt; /tmp/spot_instance.json
+</span><span class='line'>  INSTANCE_ID=`jq '.SpotInstanceRequests[0] | .InstanceId' /tmp/spot_instance.json --raw-output`
+</span><span class='line'>  /bin/sleep 15
+</span><span class='line'>  echo "INSTANCE_ID still: ${INSTANCE_ID}"
+</span><span class='line'>done
+</span><span class='line'>
+</span><span class='line'># Add Tags for this instance
+</span><span class='line'>/usr/bin/aws ec2 create-tags --resources ${INSTANCE_ID} --tags Key=Name,Value=VpcNAT Key=Owner,Value=HenryHuang --region us-west-2 </span></code></pre></td></tr></table></div></figure>
+
+
+<h3>Third: Launch Test Instance in the private subnet</h3>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>#!/bin/bash
+</span><span class='line'># This script is used to launch test instance in the private subnet
+</span><span class='line'>
+</span><span class='line'># Install AWS-CLI tool
+</span><span class='line'>/usr/bin/yum install -y gcc python-pip python-devel
+</span><span class='line'>/usr/bin/pip-python install awscli
+</span><span class='line'>
+</span><span class='line'># Generate the configuration of test instance to launch
+</span><span class='line'>/bin/rm -fv /tmp/test.json
+</span><span class='line'>/bin/cat &lt;&lt; EOF &gt;&gt; /tmp/test.json
+</span><span class='line'>{
+</span><span class='line'>  "ImageId": "ami-12345678",
+</span><span class='line'>  "KeyName": "nat4test",
+</span><span class='line'>  "UserData": "",
+</span><span class='line'>  "InstanceType": "m1.small",
+</span><span class='line'>  "SubnetId": "subnet-16cdec7e",
+</span><span class='line'>  "SecurityGroupIds": ["sg-87654321"],
+</span><span class='line'>  "IamInstanceProfile": {
+</span><span class='line'>    "Name": "nat-test"
+</span><span class='line'>  }
+</span><span class='line'>}
+</span><span class='line'>EOF
+</span><span class='line'>
+</span><span class='line'># Launch test instance via spot request
+</span><span class='line'>/usr/bin/aws ec2 request-spot-instances --spot-price 0.01 --region us-west-2  --launch-specification  file:///tmp/test.json &gt; /tmp/spot_request.json
+</span><span class='line'>
+</span><span class='line'># Install JSON parser tool: jq
+</span><span class='line'>/usr/bin/wget http://stedolan.github.io/jq/download/linux64/jq -O /usr/bin/jq
+</span><span class='line'>/bin/chmod +x /usr/bin/jq
+</span><span class='line'>
+</span><span class='line'># Get spot-instance-request-id and Query the status of spot instance launching
+</span><span class='line'>SPOT_ID=`jq '.SpotInstanceRequests[0] | .SpotInstanceRequestId' /tmp/spot_request.json --raw-output`
+</span><span class='line'>/usr/bin/aws ec2 describe-spot-instance-requests --spot-instance-request-ids ${SPOT_ID} --region us-west-2  &gt; /tmp/spot_instance.json
+</span><span class='line'>INSTANCE_ID=`jq '.SpotInstanceRequests[0] | .InstanceId' /tmp/spot_instance.json --raw-output`
+</span><span class='line'>
+</span><span class='line'># Wait for the instance ready 
+</span><span class='line'>while [ ${INSTANCE_ID} == "null" ]
+</span><span class='line'>do 
+</span><span class='line'>  /usr/bin/aws ec2 describe-spot-instance-requests --spot-instance-request-ids ${SPOT_ID}  --region us-west-2  &gt; /tmp/spot_instance.json
+</span><span class='line'>  INSTANCE_ID=`jq '.SpotInstanceRequests[0] | .InstanceId' /tmp/spot_instance.json --raw-output`
+</span><span class='line'>  /bin/sleep 15
+</span><span class='line'>  echo "INSTANCE_ID still: ${INSTANCE_ID}"
+</span><span class='line'>done
+</span><span class='line'>
+</span><span class='line'># Add Tags for this instance
+</span><span class='line'>/usr/bin/aws ec2 create-tags --resources ${INSTANCE_ID} --tags Key=Name,Value=VpcTest Key=Owner,Value=HenryHuang --region us-west-2 </span></code></pre></td></tr></table></div></figure>
+
+
+<h3>Finally Do the Verification</h3>
+
+<pre><code> 1. SCP private SSH key to the NAT instance
+ 2. SSH logon to the NAT instance
+ 3. Check the info "Configuration of PAT complete" in /var/log/messages
+ 4. Use this key to logon to the test instance
+ 5. Verify "ping" and "wget" on "google.com"
+</code></pre>
+
+<h2>References</h2>
+
+<p><a href="http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/VPC_NAT_Instance.html">http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/VPC_NAT_Instance.html</a></p>
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[Hello World]]></title>
