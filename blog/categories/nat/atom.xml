@@ -4,7 +4,7 @@
   <title><![CDATA[Category: NAT | Indefinable Hacking]]></title>
   <link href="http://henrysher.github.io/blog/categories/nat/atom.xml" rel="self"/>
   <link href="http://henrysher.github.io/"/>
-  <updated>2013-09-18T00:01:09+08:00</updated>
+  <updated>2013-09-18T00:03:32+08:00</updated>
   <id>http://henrysher.github.io/</id>
   <author>
     <name><![CDATA[Henry Huang]]></name>
@@ -244,7 +244,7 @@ exit 0
 
 <h3>Second: Launch NAT Instance</h3>
 
-<p>I have used spot instance to launch (more cheaper).
+<p>I have used spot instance to launch (much cheaper).
 ```</p>
 
 <h1>!/bin/bash</h1>
