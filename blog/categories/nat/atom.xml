@@ -4,7 +4,7 @@
   <title><![CDATA[Category: NAT | Indefinable Hacking]]></title>
   <link href="http://henrysher.github.io/blog/categories/nat/atom.xml" rel="self"/>
   <link href="http://henrysher.github.io/"/>
-  <updated>2013-09-18T00:03:32+08:00</updated>
+  <updated>2013-09-18T00:08:37+08:00</updated>
   <id>http://henrysher.github.io/</id>
   <author>
     <name><![CDATA[Henry Huang]]></name>
@@ -194,6 +194,35 @@ its core funtions could be summarized as belows:</p>
 
 
 <h2>Do it now</h2>
+
+<p>In this section, I will introduce my solution in details.
+Here is a list of useful tools I have used:</p>
+
+<table>
+<thead>
+<tr>
+<th></th>
+<th> Tools   </th>
+<th> Description                    </th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td> aws-cli </td>
+<td> New AWS Command Line Interface </td>
+</tr>
+<tr>
+<td></td>
+<td> jq      </td>
+<td> Command-line JSON processor    </td>
+</tr>
+</tbody>
+</table>
+
+
+<BR>
+
 
 <h3>First: Generate UserData for NAT Instance</h3>
 
